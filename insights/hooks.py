@@ -1,7 +1,7 @@
 from . import __version__ as app_version
 
 app_name = "insights"
-app_title = "Frappe Insights"
+app_title = "Zapal Insights"
 app_publisher = "Frappe Technologies Pvt. Ltd."
 app_description = "Powerful Reporting Tool for Frappe Apps"
 app_icon = "octicon octicon-file-directory"

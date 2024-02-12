@@ -11,7 +11,7 @@ const session = sessionStore()
 const $dayjs = inject('$dayjs')
 const today = $dayjs().format('dddd, D MMMM')
 
-document.title = 'Home | Frappe Insights'
+document.title = 'Home | Zapal Insights'
 </script>
 
 <template>
