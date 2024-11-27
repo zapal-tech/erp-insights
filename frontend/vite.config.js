@@ -5,7 +5,13 @@ import path from 'path'
 import { defineConfig } from 'vite'
 
 export default defineConfig({
-	plugins: [frappeui(), vue(), vueJsx()],
+	plugins: [
+		frappeui({
+			source: '^/(app|login|api|assets|files|private)',
+		}),
+		vue(),
+		vueJsx(),
+	],
 	esbuild: { loader: 'tsx' },
 	resolve: {
 		alias: {
@@ -13,11 +19,15 @@ export default defineConfig({
 		},
 	},
 	build: {
-		outDir: `../${path.basename(path.resolve('..'))}/public/frontend`,
+		outDir: `../insights/public/frontend`,
 		emptyOutDir: true,
 		target: 'es2015',
 		sourcemap: true,
 		rollupOptions: {
+			input: {
+				main: path.resolve(__dirname, 'index.html'),
+				insights_v2: path.resolve(__dirname, 'index_v2.html'),
+			},
 			output: {
 				manualChunks: {
 					'frappe-ui': ['frappe-ui'],

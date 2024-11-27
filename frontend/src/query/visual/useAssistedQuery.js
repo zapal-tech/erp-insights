@@ -46,6 +46,7 @@ export default function useAssistedQuery(query) {
 		removeFilterAt,
 		updateFilterAt,
 		setOrderBy,
+		setLimit,
 		addTransform,
 		removeTransformAt,
 		updateTransformAt,
@@ -181,6 +182,11 @@ export default function useAssistedQuery(query) {
 		})
 	}
 
+	function setLimit(limit) {
+		if (limit === state.limit) return
+		state.limit = limit
+	}
+
 	function addTransform() {
 		state.transforms.push({ type: '', options: {} })
 		query.updateTransforms(state.transforms)
@@ -223,8 +229,8 @@ function makeGroupedColumnOptions(options) {
 			table: columns[0].table,
 			column: 'count',
 			type: 'Integer',
-			label: `${table_label} Count`,
-			alias: `${table_label} Count`,
+			label: 'Count of Rows',
+			alias: 'Count of Rows',
 			aggregation: 'count',
 		})
 		return {

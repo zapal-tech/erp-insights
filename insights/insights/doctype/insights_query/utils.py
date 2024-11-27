@@ -1,7 +1,7 @@
 # Copyright (c) 2022, Frappe Technologies Pvt. Ltd. and contributors
 # For license information, please see license.txt
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 
 import frappe
@@ -9,63 +9,17 @@ import pandas as pd
 import sqlparse
 from frappe import _dict
 
-from insights.utils import InsightsDataSource, InsightsQuery, ResultColumn
+from insights.utils import InsightsDataSource, ResultColumn
 
 
-class InsightsTableColumn:
-    @classmethod
-    def from_dict(cls, obj):
-        column = _dict(
-            label=obj.get("alias") or obj.get("label") or obj.get("column"),
-            column=obj.get("alias") or obj.get("label") or obj.get("column"),
-            type=obj.get("type") or "String",
-        )
-        if not column.label:
-            frappe.throw("Column Label is required")
-        if not column.column:
-            frappe.throw("Column Name is required")
-        return column
-
-    @classmethod
-    def from_dicts(cls, objs):
-        return [InsightsTableColumn.from_dict(obj) for obj in objs]
-
-
-QUERY_RESULT_CACHE_PREFIX = "insights_query_results"
-
-
-class CachedResults:
-    @classmethod
-    def exists(cls, query):
-        key = f"{QUERY_RESULT_CACHE_PREFIX}:{query}"
-        return frappe.cache().exists(key)
-
-    @classmethod
-    def get(cls, query):
-        key = f"{QUERY_RESULT_CACHE_PREFIX}:{query}"
-        results_str = frappe.cache().get_value(key)
-        if not results_str:
-            return None
-        results = frappe.parse_json(results_str)
-        if not results:
-            return None
-        return results
-
-    @classmethod
-    def set(cls, query, results):
-        key = f"{QUERY_RESULT_CACHE_PREFIX}:{query}"
-        results_str = frappe.as_json(results)
-        frappe.cache().set_value(key, results_str)
-
-
-class Status(Enum):
+class QueryStatus(Enum):
     PENDING = "Pending Execution"
     SUCCESS = "Execution Successful"
     FAILED = "Execution Failed"
 
 
 def update_sql(query):
-    query.status = Status.SUCCESS.value
+    query.status = QueryStatus.SUCCESS.value
     if not query.data_source:
         return
     data_source = InsightsDataSource.get_doc(query.data_source)
@@ -74,8 +28,8 @@ def update_sql(query):
     if query.sql == sql:
         return
     query.sql = sql
-    query.update_query_results([])
-    query.status = Status.PENDING.value if sql else Status.SUCCESS.value
+    query.update_query_results()
+    query.status = QueryStatus.PENDING.value if sql else QueryStatus.SUCCESS.value
 
 
 def format_query(query):
@@ -137,7 +91,9 @@ def apply_pivot_transform(results, options):
 
     new_columns = pivoted.columns.to_list()
     result_index_column = ResultColumn.from_dict(index_column)
-    result_columns = [ResultColumn.from_args(c, value_column["type"]) for c in new_columns[1:]]
+    result_columns = [
+        ResultColumn.from_args(c, value_column["type"]) for c in new_columns[1:]
+    ]
     new_columns = [result_index_column] + result_columns
     return [new_columns] + pivoted.values.tolist()
 
@@ -219,12 +175,12 @@ def infer_type(value):
         if val % 1 == 0:
             return "Integer"
         return "Decimal"
-    except BaseException:
+    except Exception:
         try:
             # test if datetime
             pd.to_datetime(value)
             return "Datetime"
-        except BaseException:
+        except Exception:
             return "String"
 
 
@@ -246,7 +202,9 @@ def get_columns_with_inferred_types(results):
     columns = ResultColumn.from_dicts(results[0])
     column_names = [column.label for column in columns]
     results_df = pd.DataFrame(results[1:], columns=column_names)
-    column_types = (infer_type_from_list(results_df[column_name]) for column_name in column_names)
+    column_types = (
+        infer_type_from_list(results_df[column_name]) for column_name in column_names
+    )
     for column, column_type in zip(columns, column_types):
         column.type = column_type
     return columns
@@ -389,7 +347,11 @@ class Filter(frappe._dict):
             return True
         if self.operator.value in ["is_set", "is_not_set"]:
             return self.column.is_valid() and self.operator.is_valid()
-        return self.column.is_valid() and self.operator.is_valid() and self.value.is_valid()
+        return (
+            self.column.is_valid()
+            and self.operator.is_valid()
+            and self.value.is_valid()
+        )
 
     @classmethod
     def from_dicts(cls, dicts):
@@ -425,7 +387,8 @@ class Query(frappe._dict):
             frappe.throw("Invalid Column")
 
         is_filter_applied_to_column = any(
-            f.column.column == column.get("column") and f.column.table == column.get("table")
+            f.column.column == column.get("column")
+            and f.column.table == column.get("table")
             for f in self.filters
             if f.column.is_valid()
         )
@@ -435,9 +398,9 @@ class Query(frappe._dict):
         else:
             # update existing filter
             for f in self.filters:
-                if f.column.column == column.get("column") and f.column.table == column.get(
-                    "table"
-                ):
+                if f.column.column == column.get(
+                    "column"
+                ) and f.column.table == column.get("table"):
                     f.value = LabelValue(**value)
                     f.operator = LabelValue(**operator)
                     break

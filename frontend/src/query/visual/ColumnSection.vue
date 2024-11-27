@@ -12,7 +12,10 @@ const query = inject('query')
 const assistedQuery = inject('assistedQuery')
 !assistedQuery.columnOptions.length && assistedQuery.fetchColumnOptions()
 
-const columns = computed(() => assistedQuery.columns)
+const columns = computed({
+	get: () => assistedQuery.columns,
+	set: (value) => (assistedQuery.columns = value),
+})
 const columnRefs = ref(null)
 const activeColumnIdx = ref(null)
 const showExpressionEditor = computed(() => {
@@ -100,21 +103,21 @@ function onColumnSort(e) {
 		</SectionHeader>
 		<DraggableList
 			v-if="columns.length"
-			:items="columns"
+			v-model:items="columns"
 			group="columns"
 			item-key="label"
-			@sort="onColumnSort"
 			:showEmptyState="true"
 			:showHandle="false"
 		>
 			<template #item="{ item: column, index: idx }">
-				<ColumnListItem
-					v-if="isExpressionColumn(column)"
-					:column="column"
-					:isActive="activeColumnIdx === idx"
-					@edit-column="activeColumnIdx = idx"
-					@remove-column="assistedQuery.removeColumnAt(idx)"
-				/>
+				<div v-if="isExpressionColumn(column)">
+					<ColumnListItem
+						:column="column"
+						:isActive="activeColumnIdx === idx"
+						@edit-column="activeColumnIdx = idx"
+						@remove-column="assistedQuery.removeColumnAt(idx)"
+					/>
+				</div>
 				<Popover
 					v-else
 					:show="showSimpleColumnEditor && activeColumnIdx === idx"
@@ -147,20 +150,21 @@ function onColumnSort(e) {
 		</DraggableList>
 	</div>
 
-	<Dialog
-		:modelValue="showExpressionEditor"
-		:options="{
-			title: 'Column Expression',
-			size: '3xl',
-		}"
-	>
-		<template #body-content>
-			<ColumnExpressionEditor
-				:column="columns[activeColumnIdx]"
-				@remove="onRemoveColumn"
-				@save="onSaveColumn"
-				@discard="activeColumnIdx = null"
-			/>
+	<Dialog :modelValue="showExpressionEditor" :options="{ size: '3xl' }">
+		<template #body>
+			<div class="bg-white px-4 pb-6 pt-5 sm:px-6">
+				<div class="flex items-center justify-between pb-4">
+					<h3 class="text-2xl font-semibold leading-6 text-gray-900">
+						Column Expression
+					</h3>
+					<Button variant="ghost" @click="activeColumnIdx = null" icon="x"> </Button>
+				</div>
+				<ColumnExpressionEditor
+					:column="columns[activeColumnIdx]"
+					@remove="onRemoveColumn"
+					@save="onSaveColumn"
+				/>
+			</div>
 		</template>
 	</Dialog>
 </template>

@@ -23,6 +23,7 @@ from insights.utils import (
 )
 
 from ..insights_data_source.sources.query_store import store_query
+from ..insights_table_column.insights_table_column import InsightsTableColumn
 from .insights_assisted_query import InsightsAssistedQueryController
 from .insights_legacy_query import (
     InsightsLegacyQueryClient,
@@ -32,8 +33,7 @@ from .insights_query_client import InsightsQueryClient
 from .insights_raw_query import InsightsRawQueryController
 from .insights_script_query import InsightsScriptQueryController
 from .utils import (
-    InsightsTableColumn,
-    Status,
+    QueryStatus,
     apply_cumulative_sum,
     apply_pivot_transform,
     apply_transpose_transform,
@@ -52,16 +52,12 @@ class InsightsQuery(InsightsLegacyQueryClient, InsightsQueryClient, Document):
 
     def before_save(self):
         self.variant_controller.before_save()
-        self.handle_transform_change()
-
-    def handle_transform_change(self):
-        if self.has_value_changed("transforms"):
-            self.update_query_results()
-            self.status = Status.PENDING.value
 
     def on_update(self):
         self.link_chart()
         self.update_linked_docs()
+        if self.is_stored and self.has_value_changed("is_stored"):
+            store_query(self, self.retrieve_results())
 
     def link_chart(self):
         chart_name = InsightsChart.get_name(query=self.name)
@@ -77,7 +73,9 @@ class InsightsQuery(InsightsLegacyQueryClient, InsightsQueryClient, Document):
 
     @property
     def is_saved_as_table(self):
-        table_name = frappe.db.exists("Insights Table", {"table": self.name, "is_query_based": 1})
+        table_name = frappe.db.exists(
+            "Insights Table", {"table": self.name, "is_query_based": 1}
+        )
         return bool(table_name)
 
     @property
@@ -117,14 +115,13 @@ class InsightsQuery(InsightsLegacyQueryClient, InsightsQueryClient, Document):
         new_query.is_script_query = self.is_script_query
         new_query_dict = new_query.as_dict(no_default_fields=True)
         self.update(new_query_dict)
-        self.status = Status.SUCCESS.value
+        self.status = QueryStatus.SUCCESS.value
         self.update_query_results([])
         self.after_reset()
 
     def after_reset(self):
-        if not hasattr(self.variant_controller, "after_reset"):
-            return
-        self.variant_controller.after_reset()
+        if hasattr(self.variant_controller, "after_reset"):
+            self.variant_controller.after_reset()
 
     def create_default_chart(self):
         chart = frappe.new_doc("Insights Chart")
@@ -133,7 +130,7 @@ class InsightsQuery(InsightsLegacyQueryClient, InsightsQueryClient, Document):
         self.db_set("chart", chart.name, update_modified=False)
         return chart
 
-    def update_query_based_table(self, force=False):
+    def update_query_based_table(self):
         with suppress(Exception):
             create_insights_table(self.make_table())
 
@@ -197,7 +194,7 @@ class InsightsQuery(InsightsLegacyQueryClient, InsightsQueryClient, Document):
             self._results = self.process_results_columns(self._results)
             self.db_set(
                 {
-                    "status": Status.SUCCESS.value,
+                    "status": QueryStatus.SUCCESS.value,
                     "execution_time": flt(time.monotonic() - start, 3),
                     "last_execution": frappe.utils.now(),
                 },
@@ -208,7 +205,7 @@ class InsightsQuery(InsightsLegacyQueryClient, InsightsQueryClient, Document):
             self._results = []
             frappe.db.rollback()
             frappe.log_error(str(e)[:140])
-            self.db_set("status", Status.FAILED.value, commit=True)
+            self.db_set("status", QueryStatus.FAILED.value, commit=True)
             raise
         finally:
             # custom results for dashboard is cached by dashboard
@@ -260,7 +257,9 @@ class InsightsQuery(InsightsLegacyQueryClient, InsightsQueryClient, Document):
             if transform.type == "Transpose":
                 return apply_transpose_transform(results, transform.options)
 
-        cumulative_sum_transforms = [t for t in self.transforms if t.type == "CumulativeSum"]
+        cumulative_sum_transforms = [
+            t for t in self.transforms if t.type == "CumulativeSum"
+        ]
         if cumulative_sum_transforms:
             columns = []
             for transform in cumulative_sum_transforms:

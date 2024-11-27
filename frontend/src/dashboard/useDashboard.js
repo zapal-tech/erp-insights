@@ -1,5 +1,4 @@
 import useQuery from '@/query/resources/useQuery'
-import { useQueryResource } from '@/query/useQueryResource'
 import sessionStore from '@/stores/sessionStore'
 import { areDeeplyEqual, safeJSONParse } from '@/utils'
 import { createToast } from '@/utils/toasts'
@@ -43,11 +42,9 @@ export default function useDashboard(name) {
 		await resource.get.fetch()
 		state.doc = resource.doc
 		state.itemLayouts = state.doc.items.map(makeLayoutObject)
-		state.isOwner = state.doc.owner == session.user.user_id
+		state.isOwner = state.doc.owner == session.user.email
 		state.canShare = state.isOwner || session.user.is_admin
-		resource.is_private.fetch().then((res) => {
-			state.isPrivate = res.message
-		})
+		resource.is_private.fetch().then((res) => (state.isPrivate = res))
 		state.loading = false
 	}
 	reload()
@@ -141,13 +138,26 @@ export default function useDashboard(name) {
 				if (!chart_column) return
 
 				const filter_state = await getFilterState(filter.item_id)
-				if (!filter_state || !filter_state.value?.value) return
-				return {
-					label: filter.options.label,
-					column: chart_column,
-					value: filter_state.value.value,
-					operator: filter_state.operator.value,
-					column_type: chart_column.type,
+				if (filter_state && filter_state.value?.value) {
+					return {
+						label: filter.options.label,
+						column: chart_column,
+						value: filter_state.value.value,
+						operator: filter_state.operator.value,
+						column_type: chart_column.type,
+					}
+				}
+
+				const default_operator = filter.options.defaultOperator
+				const default_value = filter.options.defaultValue
+				if (default_operator?.value && default_value?.value) {
+					return {
+						label: filter.options.label,
+						column: chart_column,
+						value: default_value.value,
+						operator: default_operator.value,
+						column_type: chart_column.type,
+					}
 				}
 			})
 		const filters = await Promise.all(promises)
@@ -173,13 +183,11 @@ export default function useDashboard(name) {
 			throw new Error(`Query not found for item ${itemId}`)
 		}
 		const filters = await getChartFilters(itemId)
-		return resource.fetch_chart_data
-			.submit({
-				item_id: itemId,
-				query_name: queryName,
-				filters,
-			})
-			.then((res) => res.message)
+		return resource.fetch_chart_data.submit({
+			item_id: itemId,
+			query_name: queryName,
+			filters,
+		})
 	}
 
 	function refreshFilter(filter_id) {
@@ -298,6 +306,7 @@ function getDashboardResource(name) {
 	return createDocumentResource({
 		doctype: 'Insights Dashboard',
 		name: name,
+		auto: false,
 		whitelistedMethods: {
 			fetch_chart_data: 'fetch_chart_data',
 			clear_charts_cache: 'clear_charts_cache',

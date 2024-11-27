@@ -8,7 +8,7 @@ else
     echo "Creating new bench..."
 fi
 
-bench init --skip-redis-config-generation frappe-bench
+bench init --skip-redis-config-generation frappe-bench --version version-15
 
 cd frappe-bench
 
@@ -22,7 +22,7 @@ bench set-redis-socketio-host redis:6379
 sed -i '/redis/d' ./Procfile
 sed -i '/watch/d' ./Procfile
 
-bench get-app insights
+bench get-app insights --branch version-3
 
 bench new-site insights.localhost \
 --force \
@@ -32,8 +32,9 @@ bench new-site insights.localhost \
 
 bench --site insights.localhost install-app insights
 bench --site insights.localhost set-config developer_mode 1
-bench --site insights.localhost clear-cache
 bench --site insights.localhost set-config mute_emails 1
+bench --site insights.localhost set-config server_script_enabled 1
+bench --site insights.localhost clear-cache
 bench use insights.localhost
 
 bench start

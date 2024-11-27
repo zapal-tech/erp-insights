@@ -5,6 +5,7 @@ module.exports = {
 	content: [
 		'./index.html',
 		'./src/**/*.{vue,js,ts,jsx,tsx}',
+		'./src2/**/*.{vue,js,ts,jsx,tsx}',
 		'./node_modules/frappe-ui/src/components/**/*.{vue,js,ts,jsx,tsx}',
 		'../node_modules/frappe-ui/src/components/**/*.{vue,js,ts,jsx,tsx}',
 	],
@@ -31,6 +32,7 @@ module.exports = {
 		},
 	},
 	plugins: [
+		require('@tailwindcss/container-queries'),
 		plugin(function ({ addUtilities }) {
 			addUtilities({
 				'.scrollbar-hide': {

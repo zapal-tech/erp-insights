@@ -23,12 +23,11 @@ import { MySQL, sql } from '@codemirror/lang-sql'
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language'
 import { EditorView } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
-import { computed, ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { Codemirror } from 'vue-codemirror'
 
 const props = defineProps({
 	modelValue: String,
-	value: String,
 	readOnly: {
 		type: Boolean,
 		default: false,
@@ -57,20 +56,35 @@ const props = defineProps({
 		type: Object,
 		default: () => ({}),
 	},
+	hideLineNumbers: {
+		type: Boolean,
+		default: false,
+	},
+	disableAutocompletions: {
+		type: Boolean,
+		default: false,
+	},
 })
-const emit = defineEmits(['update:modelValue', 'inputChange', 'viewUpdate', 'focus', 'blur'])
+const emit = defineEmits(['inputChange', 'viewUpdate', 'focus', 'blur'])
+
+onMounted(() => {
+	if (props.hideLineNumbers) {
+		document.querySelectorAll('.cm-gutters').forEach((gutter) => {
+			gutter.style.display = 'none'
+		})
+	}
+})
 
 const onUpdate = (viewUpdate) => {
 	emit('viewUpdate', {
 		cursorPos: viewUpdate.state.selection.ranges[0].to,
+		syntaxTree: syntaxTree(viewUpdate.state),
+		state: viewUpdate.state,
 	})
 }
 
 const codeMirror = ref(null)
-const code = computed({
-	get: () => (props.modelValue ? props.modelValue || '' : props.value || ''),
-	set: (value) => emit('update:modelValue', value),
-})
+const code = defineModel()
 watch(code, (value, oldValue) => {
 	if (value !== oldValue) {
 		emit('inputChange', value)

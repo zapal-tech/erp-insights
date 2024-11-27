@@ -1,4 +1,4 @@
-import { formatNumber, getShortNumber } from '@/utils'
+import { formatNumber, getShortNumber, ellipsis } from '@/utils'
 import { getColors as getDefaultColors } from '@/utils/colors'
 import { graphic } from 'echarts/core'
 
@@ -76,20 +76,40 @@ function makeDatasets(options, data, xAxisColumns, xAxisValues) {
 	const restAxisColumns = xAxisColumns.slice(1)
 
 	for (let yAxisOption of validYAxisOptions) {
-		const column = yAxisOption.column || yAxisOption
-		const seriesOptions = yAxisOption.series_options || {}
-		for (let xAxis of restAxisColumns) {
-			const axisData = data.map((d) => d[xAxis])
-			const uniqueAxisData = [...new Set(axisData)]
-			for (let axis of uniqueAxisData) {
-				const _data = data.filter((d) => d[xAxis] === axis).map((d) => d[column])
-				datasets.push({
-					label: axis,
-					data: _data,
-					name: axis,
-					series_options: seriesOptions,
-				})
+		const datamap = {}
+		const column = yAxisOption.column || yAxisOption // "count"
+		const seriesOptions = yAxisOption.series_options || {} // { type: "bar" }
+
+		for (let xAxisOption of restAxisColumns) {
+			// ["fruit"]
+			let subXAxisValues = [...new Set(data.map((d) => d[xAxisOption]))] // fruit = ["apple", "banana"]
+			for (let subXAxisValue of subXAxisValues) {
+				// "Apple"
+				let subXAxisData = data.filter((d) => d[xAxisOption] === subXAxisValue) // row with Apple
+				for (let xAxisValue of xAxisValues) {
+					// ["Monday", "Tuesday"]
+					let dataSetStack = subXAxisData.find(
+						(row) => row[firstAxisColumn] == xAxisValue
+					) // row with Apple and Monday
+
+					// check if datamap has key subXAxisValue
+					// add subXAxisValue: [dataSetStack.column]
+					// if not dataSetStack.column, append 0 to datamap[subXAxisValue]
+					let value = dataSetStack?.[column] || 0
+					if (subXAxisValue in datamap) {
+						datamap[subXAxisValue].push(value)
+					} else {
+						datamap[subXAxisValue] = [value]
+					}
+				}
 			}
+		}
+		for (const [label, data] of Object.entries(datamap)) {
+			datasets.push({
+				label,
+				data,
+				series_options: seriesOptions,
+			})
 		}
 	}
 
@@ -124,7 +144,7 @@ function makeOptions(chartType, labels, datasets, options) {
 			},
 			axisLabel: {
 				rotate: options.rotateLabels,
-				formatter: (value, _) => (!isNaN(value) ? getShortNumber(value, 1) : value),
+				formatter: (value, _) => (!isNaN(value) ? getShortNumber(value, 1) : ellipsis(value, 20)),
 			},
 		},
 		yAxis: datasets.map((dataset) => ({
@@ -137,8 +157,10 @@ function makeOptions(chartType, labels, datasets, options) {
 				lineStyle: { type: 'dashed' },
 			},
 			axisLabel: {
-				formatter: (value, _) => (!isNaN(value) ? getShortNumber(value, 1) : value),
+				formatter: (value, _) => (!isNaN(value) ? getShortNumber(value, 1) : ellipsis(value, 20)),
 			},
+			min: options.yAxisMin,
+			max: options.yAxisMax,
 		})),
 		series: datasets.map((dataset, index) => ({
 			name: dataset.label,

@@ -1,7 +1,7 @@
 <script setup>
 import { areDeeplyEqual } from '@/utils'
 import * as echarts from 'echarts'
-import { onBeforeUnmount, onMounted, onUpdated, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ChartTitle from './ChartTitle.vue'
 
 const props = defineProps({
@@ -50,12 +50,10 @@ function downloadChart() {
 </script>
 
 <template>
-	<div class="h-full w-full rounded pb-3">
-		<div class="flex h-full w-full flex-col">
-			<ChartTitle :title="title" />
-			<div ref="chartRef" class="w-full flex-1 overflow-hidden">
-				<slot></slot>
-			</div>
+	<div class="flex h-full w-full flex-col rounded">
+		<ChartTitle v-if="title" :title="title" />
+		<div ref="chartRef" class="w-full flex-1 overflow-hidden">
+			<slot></slot>
 		</div>
 	</div>
 </template>

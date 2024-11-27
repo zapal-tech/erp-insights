@@ -11,12 +11,8 @@ from sqlalchemy.engine.base import Connection
 
 from insights.insights.query_builders.sql_builder import SQLQueryBuilder
 
-from .base_database import (
-    BaseDatabase,
-    DatabaseCredentialsError,
-    DatabaseParallelConnectionError,
-)
-from .mariadb import MARIADB_TO_GENERIC_TYPES
+from .base_database import DatabaseCredentialsError, DatabaseParallelConnectionError
+from .mariadb import MARIADB_TO_GENERIC_TYPES, MariaDB
 from .utils import create_insights_table, get_sqlalchemy_engine
 
 
@@ -56,7 +52,9 @@ class FrappeTableFactory:
         for [table_name, column_name, data_type, _] in columns:
             if not table_name.startswith("tab"):
                 continue
-            schema.setdefault(table_name, []).append(self.get_column(column_name, data_type))
+            schema.setdefault(table_name, []).append(
+                self.get_column(column_name, data_type)
+            )
         return schema
 
     def get_table(self, table_name):
@@ -72,7 +70,7 @@ class FrappeTableFactory:
         return _dict(
             {
                 "column": column_name,
-                "label": frappe.unscrub(column_name),
+                "label": frappe.unscrub(column_name) or column_name,
                 "type": MARIADB_TO_GENERIC_TYPES.get(column_type, "String"),
             }
         )
@@ -109,7 +107,9 @@ class FrappeTableFactory:
                 CustomField.options,
                 CustomField.dt.as_("parent"),
             )
-            .where((CustomField.fieldtype == "Link") | (CustomField.fieldtype == "Table"))
+            .where(
+                (CustomField.fieldtype == "Link") | (CustomField.fieldtype == "Table")
+            )
             .get_sql()
         )
         query = text(query)
@@ -158,7 +158,10 @@ class FrappeTableFactory:
                 DocField.options,
                 DocType.issingle,
             )
-            .where((DocField.fieldtype == "Dynamic Link") & (DocType.name == DocField.parent))
+            .where(
+                (DocField.fieldtype == "Dynamic Link")
+                & (DocType.name == DocField.parent)
+            )
             .get_sql()
         )
 
@@ -171,7 +174,10 @@ class FrappeTableFactory:
                 CustomField.options,
                 DocType.issingle,
             )
-            .where((CustomField.fieldtype == "Dynamic Link") & (DocType.name == CustomField.dt))
+            .where(
+                (CustomField.fieldtype == "Dynamic Link")
+                & (DocType.name == CustomField.dt)
+            )
             .get_sql()
         )
 
@@ -194,7 +200,7 @@ class FrappeTableFactory:
                     links = self.db_conn.execute(
                         text(f"""select distinct {df.options} from `tab{df.parent}`""")
                     ).fetchall()
-                except BaseException:
+                except Exception:
                     continue
                 links = [l[0] for l in links]
                 for doctype in links:
@@ -203,8 +209,10 @@ class FrappeTableFactory:
         return dynamic_link_map
 
 
-class FrappeDB(BaseDatabase):
-    def __init__(self, data_source, host, port, username, password, database_name, use_ssl, **_):
+class FrappeDB(MariaDB):
+    def __init__(
+        self, data_source, host, port, username, password, database_name, use_ssl, **_
+    ):
         self.data_source = data_source
         self.engine = get_sqlalchemy_engine(
             dialect="mysql",
@@ -218,12 +226,15 @@ class FrappeDB(BaseDatabase):
             ssl_verify_cert=True,
             charset="utf8mb4",
             use_unicode=True,
+            connect_args={"connect_timeout": 1, "read_timeout": 1, "write_timeout": 1},
         )
         self.query_builder: SQLQueryBuilder = SQLQueryBuilder(self.engine)
         self.table_factory: FrappeTableFactory = FrappeTableFactory(data_source)
 
-    def test_connection(self):
-        return self.execute_query("select name from tabDocType limit 1", pluck=True)
+    def test_connection(self, log_errors=True):
+        return self.execute_query(
+            "select name from tabDocType limit 1", pluck=True, log_errors=log_errors
+        )
 
     def handle_db_connection_error(self, e):
         if "Access denied" in str(e):
@@ -238,8 +249,12 @@ class FrappeDB(BaseDatabase):
             self.table_factory.sync_tables(connection, tables, force)
 
     def get_table_preview(self, table, limit=100):
-        data = self.execute_query(f"""select * from `{table}` limit {limit}""", cached=True)
-        length = self.execute_query(f"""select count(*) from `{table}`""", cached=True)[0][0]
+        data = self.execute_query(
+            f"""select * from `{table}` limit {limit}""", cached=True
+        )
+        length = self.execute_query(f"""select count(*) from `{table}`""", cached=True)[
+            0
+        ][0]
         return {
             "data": data or [],
             "length": length or 0,
@@ -285,10 +300,10 @@ from insights.cache_utils import get_or_set_cache, make_digest
 def is_frappe_db(db_params):
     def _is_frappe_db():
         try:
-            db = FrappeDB(**db_params)
-            return db.test_connection()
-        except BaseException:
+            FrappeDB(**db_params).test_connection(log_errors=False)
+        except Exception:
             return False
+        return True
 
     key = make_digest("is_frappe_db", db_params)
     return get_or_set_cache(key, _is_frappe_db, expiry=None)

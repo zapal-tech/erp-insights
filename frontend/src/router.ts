@@ -96,7 +96,7 @@ const routes = [
 		component: () => import('@/pages/Users.vue'),
 		meta: {
 			isAllowed(): boolean {
-				return sessionStore().user.is_admin && settingsStore().settings.enable_permissions
+				return false
 			},
 		},
 	},
@@ -106,7 +106,7 @@ const routes = [
 		component: () => import('@/pages/Teams.vue'),
 		meta: {
 			isAllowed(): boolean {
-				return sessionStore().user.is_admin && settingsStore().settings.enable_permissions
+				return false
 			},
 		},
 	},
@@ -141,14 +141,6 @@ const routes = [
 		},
 	},
 	{
-		path: '/not-found',
-		name: 'Not Found',
-		component: () => import('@/pages/NotFound.vue'),
-		meta: {
-			hideSidebar: true,
-		},
-	},
-	{
 		path: '/trial-expired',
 		name: 'Trial Expired',
 		component: () => import('@/pages/TrialExpired.vue'),
@@ -156,10 +148,18 @@ const routes = [
 			hideSidebar: true,
 		},
 	},
+	{
+		path: '/:pathMatch(.*)*',
+		name: 'Not Found',
+		component: () => import('@/pages/NotFound.vue'),
+		meta: {
+			hideSidebar: true,
+		},
+	},
 ]
 
 let router = createRouter({
-	history: createWebHistory('/insights'),
+	history: createWebHistory('/insights_v2'),
 	routes,
 })
 

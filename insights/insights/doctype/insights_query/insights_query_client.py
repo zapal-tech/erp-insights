@@ -18,6 +18,11 @@ from insights.insights.doctype.insights_query.patches.migrate_old_query_to_new_q
 
 class InsightsQueryClient:
     @frappe.whitelist()
+    def set_status(self, status):
+        # since status is auto set based on the sql, we need some way to override it
+        self.db_set("status", status)
+
+    @frappe.whitelist()
     def duplicate(self):
         new_query = frappe.copy_doc(self)
         new_query.save()
@@ -124,7 +129,9 @@ class InsightsQueryClient:
 
         related_table_names = get_related_table_names(table_names, self.data_source)
 
-        selected_table_cols = get_matching_columns_from(table_names, self.data_source, search_txt)
+        selected_table_cols = get_matching_columns_from(
+            table_names, self.data_source, search_txt
+        )
         related_table_cols = get_matching_columns_from(
             related_table_names, self.data_source, search_txt
         )
@@ -160,7 +167,8 @@ def get_related_table_names(table_names, data_source):
         .left_join(insights_table_link)
         .on(insights_table.name == insights_table_link.parent)
         .where(
-            (insights_table.data_source == data_source) & (insights_table.table.isin(table_names))
+            (insights_table.data_source == data_source)
+            & (insights_table.table.isin(table_names))
         )
         .select(insights_table_link.foreign_table)
         .groupby(insights_table_link.foreign_table)

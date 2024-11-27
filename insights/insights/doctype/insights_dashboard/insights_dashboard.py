@@ -3,16 +3,14 @@
 
 
 import random
-from json import dumps
+from contextlib import suppress
 
 import frappe
 from frappe.model.document import Document
 
 from insights import notify
 from insights.api.permissions import is_private
-from insights.api.telemetry import track
 from insights.cache_utils import make_digest
-from insights.insights.doctype.insights_query.utils import QUERY_RESULT_CACHE_PREFIX
 
 from .utils import guess_layout_for_chart
 
@@ -20,9 +18,6 @@ CACHE_NAMESPACE = "insights_dashboard"
 
 
 class InsightsDashboard(Document):
-    def on_trash(self):
-        track("delete_dashboard")
-
     @frappe.whitelist()
     def is_private(self):
         return is_private("Insights Dashboard", self.name)
@@ -54,7 +49,7 @@ class InsightsDashboard(Document):
             options = frappe.parse_json(row.options)
             if not options.query:
                 continue
-            frappe.cache().delete_keys(f"*{QUERY_RESULT_CACHE_PREFIX}:{options.query}*")
+            frappe.cache().delete_keys(f"*insights_query_results:{options.query}*")
         notify(**{"type": "success", "title": "Cache Cleared"})
 
     @frappe.whitelist()
@@ -84,7 +79,9 @@ class InsightsDashboard(Document):
             "Insights Settings", "query_result_expiry"
         )
         query_result_expiry_in_seconds = query_result_expiry * 60
-        frappe.cache().set_value(key, new_results, expires_in_sec=query_result_expiry_in_seconds)
+        frappe.cache().set_value(
+            key, new_results, expires_in_sec=query_result_expiry_in_seconds
+        )
         return new_results
 
 
@@ -92,21 +89,31 @@ class InsightsDashboard(Document):
 def get_queries_column(query_names):
     # TODO: handle permissions
     table_by_datasource = {}
-    for query in list(set(query_names)):
+    for query_name in list(set(query_names)):
         # TODO: to further optimize, store the used tables in the query on save
-        doc = frappe.get_cached_doc("Insights Query", query)
-        for table in doc.get_selected_tables():
-            if doc.data_source not in table_by_datasource:
-                table_by_datasource[doc.data_source] = {}
-            table_by_datasource[doc.data_source][table.table] = table
+        query = frappe.get_cached_doc("Insights Query", query_name)
+        for table in query.get_selected_tables():
+            if query.data_source not in table_by_datasource:
+                table_by_datasource[query.data_source] = {}
+            table_by_datasource[query.data_source][table.table] = table
 
     columns = []
-    for data_source in table_by_datasource.values():
-        for table in data_source.values():
-            doc = frappe.get_cached_doc(
-                "Insights Table", {"table": table.table, "data_source": doc.data_source}
-            )
-            _columns = doc.get_columns()
+    for data_source, tables in table_by_datasource.items():
+        for table_name, table in tables.items():
+            table_doc = None
+            with suppress(frappe.DoesNotExistError):
+                table_doc = frappe.get_cached_doc(
+                    "Insights Table",
+                    {
+                        "table": table_name,
+                        "data_source": data_source,
+                    },
+                )
+
+            if not table_doc:
+                continue
+
+            _columns = table_doc.get_columns()
             for column in _columns:
                 columns.append(
                     {
@@ -115,7 +122,7 @@ def get_queries_column(query_names):
                         "table": table.table,
                         "table_label": table.label,
                         "type": column.type,
-                        "data_source": doc.data_source,
+                        "data_source": data_source,
                     }
                 )
 
@@ -129,7 +136,9 @@ def get_query_columns(query):
 
 
 def get_dashboard_public_key(name):
-    existing_key = frappe.db.get_value("Insights Dashboard", name, "public_key", cache=True)
+    existing_key = frappe.db.get_value(
+        "Insights Dashboard", name, "public_key", cache=True
+    )
     if existing_key:
         return existing_key
 

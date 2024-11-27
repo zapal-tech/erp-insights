@@ -2,17 +2,17 @@
 # For license information, please see license.txt
 
 import pathlib
-from typing import List, Union
 
 import chardet
 import frappe
 import pandas as pd
 from frappe.model.base_document import BaseDocument
+from frappe.website.page_renderers.template_page import TemplatePage
 
 
 class ResultColumn:
     label: str
-    type: Union[str, List[str]]
+    type: str | list[str]
     options: dict = {}
 
     @staticmethod
@@ -30,11 +30,13 @@ class ResultColumn:
         return frappe._dict(
             label=data.get("alias") or data.get("label") or "Unnamed",
             type=data.get("type") or "String",
-            options=data.get("format_option") or data.get("options") or data.get("format_options"),
+            options=data.get("format_option")
+            or data.get("options")
+            or data.get("format_options"),
         )
 
     @classmethod
-    def from_dicts(cls, data: List[dict]) -> List["ResultColumn"]:
+    def from_dicts(cls, data: list[dict]) -> list["ResultColumn"]:
         return [cls.from_dict(d) for d in data]
 
 
@@ -100,10 +102,53 @@ class InsightsQueryResult(DoctypeBase):
     doctype = "Insights Query Result"
 
 
+class InsightsDataSourcev3(DoctypeBase):
+    doctype = "Insights Data Source v3"
+
+
+class InsightsTablev3(DoctypeBase):
+    doctype = "Insights Table v3"
+
+
+class DocShare(DoctypeBase):
+    doctype = "DocShare"
+
+
+class File(DoctypeBase):
+    doctype = "File"
+
+
 class InsightsSettings:
     @classmethod
     def get(cls, key):
         return frappe.db.get_single_value("Insights Settings", key)
+
+
+def deep_convert_dict_to_dict(d):
+    if isinstance(d, dict):
+        new_dict = frappe._dict()
+        for k, v in d.items():
+            new_dict[k] = deep_convert_dict_to_dict(v)
+        return new_dict
+
+    if isinstance(d, list):
+        new_list = []
+        for v in d:
+            new_list.append(deep_convert_dict_to_dict(v))
+        return new_list
+
+    return d
+
+
+def create_execution_log(sql, time_taken=0, query_name=None):
+    frappe.get_doc(
+        {
+            "doctype": "Insights Query Execution Log",
+            "time_taken": time_taken,
+            "query": query_name,
+            "sql": sql,
+        }
+    ).insert(ignore_permissions=True)
 
 
 def detect_encoding(file_path: str):
@@ -133,3 +178,51 @@ def anonymize_data(df, columns_to_anonymize, prefix_by_column=None):
         df[column] = prefix + pd.Series(codes).astype(str)
 
     return df
+
+
+def xls_to_df(file_path: str) -> list[pd.DataFrame]:
+    file_extension = file_path.split(".")[-1].lower()
+    if file_extension != "xlsx" or file_extension != "xls":
+        frappe.throw(f"Unsupported file extension: {file_extension}")
+
+    sheets = {}
+    excel_file = pd.ExcelFile(file_path)
+    for sheet_name in excel_file.sheet_names:
+        sheets[sheet_name] = excel_file.parse(sheet_name)
+    return sheets
+
+
+class InsightsPageRenderer(TemplatePage):
+    def can_render(self):
+        try:
+            path = frappe.request.path
+        except BaseException:
+            path = self.path
+
+        embed_urls = [
+            "/insights_v2/public",
+            "/insights/public",
+        ]
+        if not any(path.startswith(url) for url in embed_urls):
+            return False
+
+        return super().can_render()
+
+    def render(self):
+        self.set_headers()
+        return super().render()
+
+    def set_headers(self):
+        allowed_origins = frappe.db.get_single_value(
+            "Insights Settings", "allowed_origins"
+        )
+        if not allowed_origins:
+            return
+
+        self.headers = self.headers or {}
+        allowed_origins = allowed_origins.split(",") if allowed_origins else []
+        allowed_origins = [origin.strip() for origin in allowed_origins]
+        allowed_origins = " ".join(allowed_origins)
+        self.headers[
+            "Content-Security-Policy"
+        ] = f"frame-ancestors 'self' {allowed_origins}"

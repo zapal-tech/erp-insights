@@ -17,12 +17,12 @@ import { computed, unref, watch } from 'vue'
 
 export const COLUMN_TYPES = [
 	{ label: 'String', value: 'String' },
+	{ label: 'Text', value: 'Text' },
 	{ label: 'Integer', value: 'Integer' },
 	{ label: 'Decimal', value: 'Decimal' },
-	{ label: 'Text', value: 'Text' },
-	{ label: 'Datetime', value: 'Datetime' },
 	{ label: 'Date', value: 'Date' },
 	{ label: 'Time', value: 'Time' },
+	{ label: 'Datetime', value: 'Datetime' },
 ]
 
 export const fieldtypesToIcon = {
@@ -45,23 +45,35 @@ export const returnTypesToIcon = {
 	any: ShieldQuestion,
 }
 
+const NumberTypes = ['Integer', 'Decimal']
+const TextTypes = ['Text', 'String']
+const DateTypes = ['Date', 'Datetime', 'Time']
+
 export const FIELDTYPES = {
-	NUMBER: ['Integer', 'Decimal'],
-	TEXT: ['Text', 'String'],
-	DATE: ['Date', 'Datetime', 'Time'],
+	NUMBER: NumberTypes,
+	TEXT: TextTypes,
+	DATE: DateTypes,
+	MEASURE: NumberTypes,
+	DIMENSION: TextTypes.concat(DateTypes),
+	DISCRETE: TextTypes,
+	CONTINUOUS: NumberTypes.concat(DateTypes),
 }
 
 export const AGGREGATIONS = [
-	{ label: 'Unique', value: 'group by' },
-	{ label: 'Count of Records', value: 'count' },
-	{ label: 'Sum of', value: 'sum' },
-	{ label: 'Average of', value: 'avg' },
-	{ label: 'Cumulative Count of Records', value: 'cumulative count' },
-	{ label: 'Cumulative Sum of', value: 'cumulative sum' },
-	{ label: 'Unique values of', value: 'distinct' },
-	{ label: 'Unique count of', value: 'distinct_count' },
-	{ label: 'Minimum of', value: 'min' },
-	{ label: 'Maximum of', value: 'max' },
+	{ label: 'Unique', value: 'group by', description: 'Group by' },
+	{ label: 'Count of Records', value: 'count', description: 'Count' },
+	{ label: 'Sum of', value: 'sum', description: 'Sum' },
+	{ label: 'Average of', value: 'avg', description: 'Average' },
+	{
+		label: 'Cumulative Count of Records',
+		value: 'cumulative count',
+		description: 'Cumulative Count',
+	},
+	{ label: 'Cumulative Sum of', value: 'cumulative sum', description: 'Cumulative Sum' },
+	{ label: 'Unique values of', value: 'distinct', description: 'Distinct' },
+	{ label: 'Unique count of', value: 'distinct_count', description: 'Distinct Count' },
+	{ label: 'Minimum of', value: 'min', description: 'Minimum' },
+	{ label: 'Maximum of', value: 'max', description: 'Maximum' },
 ]
 
 export const GRANULARITIES = [
@@ -184,6 +196,10 @@ export function safeJSONParse(str, defaultValue = null) {
 		console.log(str)
 		console.error(e)
 		console.groupEnd()
+		createToast({
+			message: 'Error parsing JSON',
+			variant: 'error',
+		})
 		return defaultValue
 	}
 }
@@ -270,6 +286,7 @@ export function getShortNumber(number, precision = 0) {
 }
 
 export function formatNumber(number, precision = 2) {
+	if (isNaN(number)) return number
 	precision = precision || guessPrecision(number)
 	const session = sessionStore()
 	const locale = session.user?.country == 'India' ? 'en-IN' : session.user?.locale
@@ -461,11 +478,10 @@ export function wheneverChanges(getter, callback, options = {}) {
 	let prevValue = null
 	function onChange(value) {
 		if (areDeeplyEqual(value, prevValue)) return
-		if (!value) return
 		prevValue = value
 		callback(value)
 	}
-	return watch(getter, onChange, options)
+	return watchDebounced(getter, onChange, options)
 }
 
 export async function run_doc_method(method, doc, args = {}) {

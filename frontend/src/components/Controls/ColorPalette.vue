@@ -79,7 +79,7 @@ watch(selectedPalette, () => (colors.value = selectedPaletteColors.value))
 const selectedPaletteColors = computed(() => getPaletteColors(selectedPalette.value.value))
 
 const colors = defineModel()
-if (colors.value?.length === 0) {
+if (!colors.value?.length) {
 	selectedPalette.value = colorPaletteOptions.at(0)
 } else if (isCustomPalette(colors.value)) {
 	selectedPalette.value = colorPaletteOptions.at(-1)
@@ -97,7 +97,7 @@ function getPaletteColors(palette) {
 function guessPredefinedPalette(colors) {
 	if (!colors?.length) return false
 	return colorPaletteOptions.find((palette) =>
-		colors.every((color) => paletteColors[palette.value].includes(color))
+		colors.every((color) => paletteColors[palette.value]?.includes(color))
 	)
 }
 function isCustomPalette(colors) {
