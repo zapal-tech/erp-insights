@@ -273,7 +273,7 @@ watch(addLinkDialog, async (val) => {
 watchEffect(() => {
 	if (dataSourceTable.doc?.label) {
 		const title = dataSourceTable.doc.title || dataSourceTable.doc.label
-		document.title = `${title} - Frappe Insights`
+		document.title = `${title} - Zapal Insights`
 	}
 })
 </script>

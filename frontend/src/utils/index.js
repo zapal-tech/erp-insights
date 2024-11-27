@@ -234,7 +234,7 @@ export function updateDocumentTitle(meta) {
 				return
 			}
 			if (meta.value.title) {
-				document.title = `${meta.value.title} | Frappe Insights`
+				document.title = `${meta.value.title} | Zapal Insights`
 				return
 			}
 		},
