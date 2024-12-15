@@ -10,7 +10,24 @@ from ibis import selectors as s
 # from ibis.expr.types.temporal import DateValue, TimestampValue
 
 # aggregate functions
-f_count = lambda column, *args, **kwargs: column.count(*args, **kwargs)
+def f_count(column=None, where=None):
+    if column is None:
+        query = frappe.flags.current_ibis_query
+        column = query.columns[0]
+        column = getattr(query, column)
+
+    return column.count(where=where)
+
+
+def f_count_if(condition, column=None):
+    if column is None:
+        query = frappe.flags.current_ibis_query
+        column = query.columns[0]
+        column = getattr(query, column)
+
+    return f_count(column, where=condition)
+
+
 f_min = lambda column, *args, **kwargs: column.min(*args, **kwargs)
 f_max = lambda column, *args, **kwargs: column.max(*args, **kwargs)
 f_sum = lambda column, *args, **kwargs: column.sum(*args, **kwargs)
@@ -18,7 +35,6 @@ f_avg = lambda column, *args, **kwargs: column.mean(*args, **kwargs)
 f_group_concat = lambda column, *args, **kwargs: column.group_concat(*args, **kwargs)
 f_distinct_count = lambda column: column.nunique()
 f_sum_if = lambda condition, column: f_sum(column, where=condition)
-f_count_if = lambda condition, column: f_count(column, where=condition)
 f_distinct_count_if = lambda condition, column: column.nunique(where=condition)
 
 # boolean functions
@@ -136,6 +152,12 @@ def f_is_first_row(group_by, order_by, sort_order="asc"):
     _order_by = ibis.asc(order_by) if sort_order == "asc" else ibis.desc(order_by)
     row_number = f_row_number().over(group_by=group_by, order_by=_order_by)
     return f_if_else(row_number == 1, 1, 0)
+
+
+def f_filter_first_row(group_by, order_by, sort_order="asc"):
+    _order_by = ibis.asc(order_by) if sort_order == "asc" else ibis.desc(order_by)
+    row_number = f_row_number().over(group_by=group_by, order_by=_order_by)
+    return row_number == 1
 
 
 def f_create_buckets(column, num_buckets):

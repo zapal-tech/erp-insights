@@ -3,18 +3,16 @@ import { call } from 'frappe-ui'
 import { computed, reactive } from 'vue'
 import { copy, showErrorToast, wheneverChanges } from '../helpers'
 import { confirmDialog } from '../helpers/confirm_dialog'
-import { FIELDTYPES } from '../helpers/constants'
 import { createToast } from '../helpers/toasts'
 import {
 	CodeArgs,
 	ColumnDataType,
+	ColumnOption,
 	CustomOperationArgs,
 	Dimension,
-	DimensionDataType,
 	FilterGroupArgs,
 	JoinArgs,
 	Measure,
-	MeasureDataType,
 	MutateArgs,
 	Operation,
 	OrderByArgs,
@@ -26,16 +24,18 @@ import {
 	SourceArgs,
 	SQLArgs,
 	SummarizeArgs,
-	UnionArgs,
+	UnionArgs
 } from '../types/query.types'
 import { WorkbookQuery } from '../types/workbook.types'
 import {
 	cast,
+	code,
 	column,
-	count,
 	custom_operation,
 	filter_group,
+	getDimensions,
 	getFormattedRows,
+	getMeasures,
 	join,
 	limit,
 	mutate,
@@ -47,8 +47,7 @@ import {
 	source,
 	sql,
 	summarize,
-	union,
-	code
+	union
 } from './helpers'
 
 const queries = new Map<string, Query>()
@@ -141,37 +140,12 @@ export function makeQuery(workbookQuery: WorkbookQuery) {
 	query.activeOperationIdx = query.doc.operations.length - 1
 
 	// @ts-ignore
-	query.dimensions = computed(() => {
-		if (!query.result.columns?.length) return []
-		return query.result.columns
-			.filter((column) => FIELDTYPES.DIMENSION.includes(column.type))
-			.map((column) => {
-				const isDate = FIELDTYPES.DATE.includes(column.type)
-				return {
-					column_name: column.name,
-					data_type: column.type as DimensionDataType,
-					granularity: isDate ? 'month' : undefined,
-					dimension_name: column.name,
-				}
-			})
-	})
+	query.dimensions = computed(() => getDimensions(query.result.columns))
 
 	// @ts-ignore
 	query.measures = computed(() => {
-		if (!query.result.columns?.length) return []
-		const count_measure = count()
 		return [
-			count_measure,
-			...query.result.columns
-				.filter((column) => FIELDTYPES.MEASURE.includes(column.type))
-				.map((column) => {
-					return {
-						aggregation: 'sum',
-						column_name: column.name,
-						measure_name: `sum_of_${column.name}`,
-						data_type: column.type as MeasureDataType,
-					}
-				}),
+			...getMeasures(query.result.columns),
 			...Object.values(query.doc.calculated_measures || {}),
 		]
 	})
@@ -228,11 +202,6 @@ export function makeQuery(workbookQuery: WorkbookQuery) {
 			const queryTable = getCachedQuery(op.table.query_name)
 			if (!queryTable) {
 				const message = `Query ${op.table.query_name} not found`
-				createToast({
-					variant: 'error',
-					title: 'Error',
-					message,
-				})
 				throw new Error(message)
 			}
 
@@ -656,7 +625,7 @@ export function makeQuery(workbookQuery: WorkbookQuery) {
 		})
 	}
 
-	function getColumnsForSelection() {
+	function getColumnsForSelection(): Promise<ColumnOption[]> {
 		const operationsForExecution = query.getOperationsForExecution()
 		if (
 			query.activeEditOperation.type === 'select' ||

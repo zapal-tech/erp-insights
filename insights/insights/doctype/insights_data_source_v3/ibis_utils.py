@@ -433,36 +433,16 @@ class IbisQueryBuilder:
 
     def apply_code(self, code_args):
         code = code_args.code
+        digest = make_digest(code)
+        results = get_code_results(code, digest)
 
-        pandas = frappe._dict()
-        pandas.DataFrame = pd.DataFrame
-        pandas.read_csv = pd.read_csv
-        pandas.json_normalize = pd.json_normalize
-        # prevent users from writing to disk
-        pandas.DataFrame.to_csv = lambda *args, **kwargs: None
-        pandas.DataFrame.to_json = lambda *args, **kwargs: None
-
-        results = []
-        _, _locals = safe_exec(
-            code,
-            _globals={"pandas": pandas},
-            _locals={"results": results},
-            restrict_commit_rollback=True,
+        db = ibis.duckdb.connect()
+        return db.create_table(
+            digest,
+            results,
+            temp=True,
+            overwrite=True,
         )
-        results = _locals["results"]
-        if results is None or len(results) == 0:
-            results = [{"error": "No results"}]
-
-        frappe.publish_realtime(
-            event="insights_script_log",
-            user=frappe.session.user,
-            message={
-                "user": frappe.session.user,
-                "logs": frappe.debug_log,
-            },
-        )
-
-        return ibis.memtable(results, name=make_digest(code))
 
     def translate_measure(self, measure):
         if measure.column_name == "count" and measure.aggregation == "count":
@@ -561,17 +541,18 @@ class IbisQueryBuilder:
         return {col: getattr(self.query, col) for col in self.query.schema().names}
 
 
-def execute_ibis_query(
-    query: IbisQuery, limit=100, cache=True, cache_expiry=3600
-) -> pd.DataFrame:
-    limit = int(limit or 100)
-    limit = min(max(limit, 1), 10_00_000)
-    query = query.head(limit) if limit else query
+def execute_ibis_query(query: IbisQuery, limit=100, cache=True, cache_expiry=3600):
     sql = ibis.to_sql(query)
-    cache_key = make_digest(sql, query._find_backend().db_identity)
+    backends, _ = query._find_backends()
+    backend_id = backends[0].db_identity if backends else None
+    cache_key = make_digest(sql, backend_id)
 
     if cache and has_cached_results(cache_key):
         return get_cached_results(cache_key), -1
+
+    limit = int(limit or 100)
+    limit = min(max(limit, 1), 10_00_000)
+    query = query.head(limit) if limit else query
 
     start = time.monotonic()
     result: pd.DataFrame = query.execute()
@@ -681,3 +662,44 @@ def sanitize_name(name):
         .replace(")", "_")
         .lower()
     )
+
+
+def get_code_results(code: str, digest: str):
+    if has_cached_results(digest):
+        return get_cached_results(digest)
+
+    pandas = frappe._dict()
+    pandas.DataFrame = pd.DataFrame
+    pandas.read_csv = pd.read_csv
+    pandas.json_normalize = pd.json_normalize
+    # prevent users from writing to disk
+    pandas.DataFrame.to_csv = lambda *args, **kwargs: None
+    pandas.DataFrame.to_json = lambda *args, **kwargs: None
+
+    results = []
+    frappe.debug_log = []
+    _, _locals = safe_exec(
+        code,
+        _globals={"pandas": pandas},
+        _locals={"results": results},
+        restrict_commit_rollback=True,
+    )
+    results = _locals["results"]
+    if results is None or len(results) == 0:
+        results = [{"error": "No results"}]
+
+    frappe.publish_realtime(
+        event="insights_script_log",
+        user=frappe.session.user,
+        message={
+            "user": frappe.session.user,
+            "logs": frappe.debug_log,
+        },
+    )
+
+    if not isinstance(results, pd.DataFrame):
+        results = pd.DataFrame(results)
+
+    cache_results(digest, results)
+
+    return results
